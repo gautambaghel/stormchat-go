@@ -1,25 +1,35 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
+	"github.com/astaxie/beego/orm"
+	"github.com/gautambaghel/stormchat-go/models"
 	"github.com/gin-gonic/gin"
 )
 
+// ORM contains Database connector
+var ORM orm.Ormer
 var db = make(map[string]string)
 
 func setupRouter() *gin.Engine {
 	// Disable Console Color
 	// gin.DisableConsoleColor()
-	r := gin.Default()
+	router := gin.Default()
+
+	router.POST("/createUser", createUser)
+	// router.GET("/readUsers", readUsers)
+	// router.PUT("/updateUser", updateUser)
+	// router.DELETE("/deleteUser", deleteUser)
 
 	// Ping test
-	r.GET("/ping", func(c *gin.Context) {
+	router.GET("/ping", func(c *gin.Context) {
 		c.String(http.StatusOK, "pong")
 	})
 
 	// Get user value
-	r.GET("/user/:name", func(c *gin.Context) {
+	router.GET("/user/:name", func(c *gin.Context) {
 		user := c.Params.ByName("name")
 		value, ok := db[user]
 		if ok {
@@ -36,7 +46,7 @@ func setupRouter() *gin.Engine {
 	//	  "foo":  "bar",
 	//	  "manu": "123",
 	//}))
-	authorized := r.Group("/", gin.BasicAuth(gin.Accounts{
+	authorized := router.Group("/", gin.BasicAuth(gin.Accounts{
 		"foo":  "bar", // user:foo password:bar
 		"manu": "123", // user:manu password:123
 	}))
@@ -55,11 +65,42 @@ func setupRouter() *gin.Engine {
 		}
 	})
 
-	return r
+	return router
+}
+
+func createUser(c *gin.Context) {
+	var newUser models.Users
+	c.BindJSON(&newUser)
+	_, err := ORM.Insert(&newUser)
+	if err == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"status":    http.StatusOK,
+			"email":     newUser.Email,
+			"user_name": newUser.UserName,
+			"user_id":   newUser.UserID})
+	} else {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"status": http.StatusInternalServerError, "error": "Failed to create the user"})
+	}
 }
 
 func main() {
-	r := setupRouter()
+	router := setupRouter()
+	models.ConnectToDb()
+	ORM = models.GetOrmObject()
+
+	// Database alias.
+	name := "default"
+	// Drop table and re-create.
+	force := true
+	// Print log.
+	verbose := true
+	// Error.
+	err := orm.RunSyncdb(name, force, verbose)
+	if err != nil {
+		fmt.Println(err)
+	}
+
 	// Listen and Server in 0.0.0.0:8080
-	r.Run(":8080")
+	router.Run(":8080")
 }
